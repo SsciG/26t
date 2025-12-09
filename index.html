@@ -1946,6 +1946,112 @@
                     ctx.translate(p.x, p.y);
                     ctx.rotate(p.rotation);
                     ctx.fillRect(-particleSize / 2, -particleSize / 2, particleSize, particleSize);
+                } else if (p.type === 'fire') {
+                    // ULTRA-REALISTIC ROCKET-STYLE FLAME with turbulence
+                    ctx.translate(p.x, p.y);
+
+                    // Turbulent movement (flames dance and twist)
+                    if (p.turbulence !== undefined) {
+                        p.x += Math.sin(p.flickerPhase * 0.5) * p.turbulence;
+                    }
+
+                    // Rotate flames for more chaos
+                    if (p.rotationSpeed !== undefined) {
+                        p.rotation += p.rotationSpeed;
+                        ctx.rotate(p.rotation);
+                    }
+
+                    // Animate flicker (use custom speed if available)
+                    const flickerSpeed = p.flickerSpeed || 0.2;
+                    p.flickerPhase += flickerSpeed;
+                    const flicker = Math.sin(p.flickerPhase) * 0.2 + 1; // More dramatic flicker
+                    const flickerX = Math.cos(p.flickerPhase * 0.7) * particleSize * 0.15; // More sway
+
+                    const flameWidth = particleSize * 1.6 * flicker; // CINEMATIC - bigger core
+                    const flameHeight = particleSize * 3.2 * flicker; // HEAVY fire presence
+
+                    // Create flame gradient (hot center, cooler edges)
+                    const flameGradient = ctx.createRadialGradient(
+                        flickerX, flameHeight * 0.1, 0,
+                        flickerX, 0, flameHeight * 0.6
+                    );
+
+                    // Gradient based on particle color (hotter = brighter)
+                    if (p.color.includes('ffffff')) {
+                        // White hot core
+                        flameGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                        flameGradient.addColorStop(0.3, 'rgba(255, 255, 100, 0.9)');
+                        flameGradient.addColorStop(0.6, 'rgba(255, 150, 0, 0.6)');
+                        flameGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+                    } else if (p.color.includes('ffff00')) {
+                        // Yellow flame
+                        flameGradient.addColorStop(0, 'rgba(255, 255, 100, 1)');
+                        flameGradient.addColorStop(0.4, 'rgba(255, 200, 0, 0.8)');
+                        flameGradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.5)');
+                        flameGradient.addColorStop(1, 'rgba(200, 50, 0, 0)');
+                    } else if (p.color.includes('ff9900')) {
+                        // Orange flame
+                        flameGradient.addColorStop(0, 'rgba(255, 200, 50, 1)');
+                        flameGradient.addColorStop(0.4, 'rgba(255, 150, 0, 0.8)');
+                        flameGradient.addColorStop(0.7, 'rgba(255, 80, 0, 0.5)');
+                        flameGradient.addColorStop(1, 'rgba(150, 30, 0, 0)');
+                    } else {
+                        // Red/orange flame
+                        flameGradient.addColorStop(0, 'rgba(255, 150, 0, 1)');
+                        flameGradient.addColorStop(0.4, 'rgba(255, 80, 0, 0.9)');
+                        flameGradient.addColorStop(0.7, 'rgba(200, 50, 0, 0.6)');
+                        flameGradient.addColorStop(1, 'rgba(100, 0, 0, 0)');
+                    }
+
+                    ctx.fillStyle = flameGradient;
+
+                    // LAYER 3: Outer glow (soft, large)
+                    ctx.save();
+                    ctx.globalAlpha = 0.3;
+                    ctx.shadowColor = p.color;
+                    ctx.shadowBlur = particleSize * 2.0;
+                    ctx.beginPath();
+                    ctx.ellipse(flickerX, 0, flameWidth * 0.7, flameHeight * 0.6, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.restore();
+
+                    // LAYER 2: Main flame body (organic teardrop shape)
+                    ctx.shadowColor = p.color;
+                    ctx.shadowBlur = particleSize * 1.5;
+                    ctx.beginPath();
+                    ctx.moveTo(flickerX, -flameHeight / 2);
+                    ctx.bezierCurveTo(
+                        flameWidth / 2.5 + flickerX * 0.5, -flameHeight / 3,
+                        flameWidth / 2, 0,
+                        flameWidth / 3, flameHeight / 2
+                    );
+                    ctx.bezierCurveTo(
+                        flameWidth / 6, flameHeight / 2.5,
+                        -flameWidth / 6, flameHeight / 2.5,
+                        -flameWidth / 3, flameHeight / 2
+                    );
+                    ctx.bezierCurveTo(
+                        -flameWidth / 2, 0,
+                        -flameWidth / 2.5 + flickerX * 0.5, -flameHeight / 3,
+                        flickerX, -flameHeight / 2
+                    );
+                    ctx.closePath();
+                    ctx.fill();
+
+                    // LAYER 1: Hot core (bright center)
+                    ctx.shadowBlur = particleSize * 0.8;
+                    const coreGradient = ctx.createRadialGradient(
+                        flickerX, flameHeight * 0.2, 0,
+                        flickerX, 0, flameHeight * 0.4
+                    );
+                    coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                    coreGradient.addColorStop(0.5, 'rgba(255, 255, 150, 0.6)');
+                    coreGradient.addColorStop(1, 'rgba(255, 200, 0, 0)');
+                    ctx.fillStyle = coreGradient;
+                    ctx.beginPath();
+                    ctx.ellipse(flickerX, 0, flameWidth * 0.3, flameHeight * 0.3, 0, 0, Math.PI * 2);
+                    ctx.fill();
+                    ctx.shadowBlur = 0;
                 } else {
                     // SMOKE particles (soft circles with blur) or regular particles
                     if (p.color.includes('666666') || p.color.includes('999999')) {
@@ -2936,6 +3042,112 @@
                         ctx.translate(p.x, p.y);
                         ctx.rotate(p.rotation);
                         ctx.fillRect(-particleSize / 2, -particleSize / 2, particleSize, particleSize);
+                    } else if (p.type === 'fire') {
+                        // ULTRA-REALISTIC ROCKET-STYLE FLAME with turbulence
+                        ctx.translate(p.x, p.y);
+
+                        // Turbulent movement (flames dance and twist)
+                        if (p.turbulence !== undefined) {
+                            p.x += Math.sin(p.flickerPhase * 0.5) * p.turbulence;
+                        }
+
+                        // Rotate flames for more chaos
+                        if (p.rotationSpeed !== undefined) {
+                            p.rotation += p.rotationSpeed;
+                            ctx.rotate(p.rotation);
+                        }
+
+                        // Animate flicker (use custom speed if available)
+                        const flickerSpeed = p.flickerSpeed || 0.2;
+                        p.flickerPhase += flickerSpeed;
+                        const flicker = Math.sin(p.flickerPhase) * 0.2 + 1; // More dramatic flicker
+                        const flickerX = Math.cos(p.flickerPhase * 0.7) * particleSize * 0.15; // More sway
+
+                        const flameWidth = particleSize * 1.6 * flicker; // CINEMATIC - bigger core
+                        const flameHeight = particleSize * 3.2 * flicker; // HEAVY fire presence
+
+                        // Create flame gradient (hot center, cooler edges)
+                        const flameGradient = ctx.createRadialGradient(
+                            flickerX, flameHeight * 0.1, 0,
+                            flickerX, 0, flameHeight * 0.6
+                        );
+
+                        // Gradient based on particle color (hotter = brighter)
+                        if (p.color.includes('ffffff')) {
+                            // White hot core
+                            flameGradient.addColorStop(0, 'rgba(255, 255, 255, 1)');
+                            flameGradient.addColorStop(0.3, 'rgba(255, 255, 100, 0.9)');
+                            flameGradient.addColorStop(0.6, 'rgba(255, 150, 0, 0.6)');
+                            flameGradient.addColorStop(1, 'rgba(255, 50, 0, 0)');
+                        } else if (p.color.includes('ffff00')) {
+                            // Yellow flame
+                            flameGradient.addColorStop(0, 'rgba(255, 255, 100, 1)');
+                            flameGradient.addColorStop(0.4, 'rgba(255, 200, 0, 0.8)');
+                            flameGradient.addColorStop(0.7, 'rgba(255, 100, 0, 0.5)');
+                            flameGradient.addColorStop(1, 'rgba(200, 50, 0, 0)');
+                        } else if (p.color.includes('ff9900')) {
+                            // Orange flame
+                            flameGradient.addColorStop(0, 'rgba(255, 200, 50, 1)');
+                            flameGradient.addColorStop(0.4, 'rgba(255, 150, 0, 0.8)');
+                            flameGradient.addColorStop(0.7, 'rgba(255, 80, 0, 0.5)');
+                            flameGradient.addColorStop(1, 'rgba(150, 30, 0, 0)');
+                        } else {
+                            // Red/orange flame
+                            flameGradient.addColorStop(0, 'rgba(255, 150, 0, 1)');
+                            flameGradient.addColorStop(0.4, 'rgba(255, 80, 0, 0.9)');
+                            flameGradient.addColorStop(0.7, 'rgba(200, 50, 0, 0.6)');
+                            flameGradient.addColorStop(1, 'rgba(100, 0, 0, 0)');
+                        }
+
+                        ctx.fillStyle = flameGradient;
+
+                        // LAYER 3: Outer glow (soft, large)
+                        ctx.save();
+                        ctx.globalAlpha = 0.3;
+                        ctx.shadowColor = p.color;
+                        ctx.shadowBlur = particleSize * 2.0;
+                        ctx.beginPath();
+                        ctx.ellipse(flickerX, 0, flameWidth * 0.7, flameHeight * 0.6, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.restore();
+
+                        // LAYER 2: Main flame body (organic teardrop shape)
+                        ctx.shadowColor = p.color;
+                        ctx.shadowBlur = particleSize * 1.5;
+                        ctx.beginPath();
+                        ctx.moveTo(flickerX, -flameHeight / 2);
+                        ctx.bezierCurveTo(
+                            flameWidth / 2.5 + flickerX * 0.5, -flameHeight / 3,
+                            flameWidth / 2, 0,
+                            flameWidth / 3, flameHeight / 2
+                        );
+                        ctx.bezierCurveTo(
+                            flameWidth / 6, flameHeight / 2.5,
+                            -flameWidth / 6, flameHeight / 2.5,
+                            -flameWidth / 3, flameHeight / 2
+                        );
+                        ctx.bezierCurveTo(
+                            -flameWidth / 2, 0,
+                            -flameWidth / 2.5 + flickerX * 0.5, -flameHeight / 3,
+                            flickerX, -flameHeight / 2
+                        );
+                        ctx.closePath();
+                        ctx.fill();
+
+                        // LAYER 1: Hot core (bright center)
+                        ctx.shadowBlur = particleSize * 0.8;
+                        const coreGradient = ctx.createRadialGradient(
+                            flickerX, flameHeight * 0.2, 0,
+                            flickerX, 0, flameHeight * 0.4
+                        );
+                        coreGradient.addColorStop(0, 'rgba(255, 255, 255, 0.9)');
+                        coreGradient.addColorStop(0.5, 'rgba(255, 255, 150, 0.6)');
+                        coreGradient.addColorStop(1, 'rgba(255, 200, 0, 0)');
+                        ctx.fillStyle = coreGradient;
+                        ctx.beginPath();
+                        ctx.ellipse(flickerX, 0, flameWidth * 0.3, flameHeight * 0.3, 0, 0, Math.PI * 2);
+                        ctx.fill();
+                        ctx.shadowBlur = 0;
                     } else {
                         // SMOKE particles (soft circles with blur)
                         ctx.shadowColor = p.color;
