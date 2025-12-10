@@ -5,6 +5,11 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>T26 Endless Runner</title>
     <style>
+         html, body {
+      overflow: hidden;
+      overscroll-behavior: none;
+    }
+    
         * {
             margin: 0;
             padding: 0;
@@ -799,7 +804,7 @@
 
         // Preload images
         images.logo.src = 'https://i.postimg.cc/9rrtPG4T/t26-Logo-transpaent.png';
-        images.logoIcon.src = 'https://i.postimg.cc/Rh9JkLqw/logo.png';
+        images.logoIcon.src = 'https://i.postimg.cc/Rh9JkLqw/logo.png';  // Local logo file for the rocket
         images.logoTransparent.src = 'https://i.postimg.cc/9rrtPG4T/t26-Logo-transpaent.png';
 
         // Crypto logos
@@ -1079,12 +1084,30 @@
         }
 
         document.addEventListener('keydown', (e) => {
+            const blockedKeys = [
+                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                'Space', 'PageUp', 'PageDown'
+            ];
+
+            if (blockedKeys.includes(e.code) || blockedKeys.includes(e.key)) {
+                e.preventDefault();
+            }
+
             keys[e.code] = true;
-        });
+        }, { passive: false });
 
         document.addEventListener('keyup', (e) => {
+            const blockedKeys = [
+                'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
+                'Space', 'PageUp', 'PageDown'
+            ];
+
+            if (blockedKeys.includes(e.code) || blockedKeys.includes(e.key)) {
+                e.preventDefault();
+            }
+
             keys[e.code] = false;
-        });
+        }, { passive: false });
 
         document.getElementById('startBtn').addEventListener('click', () => {
             unlockAudio(); // Browser autoplay compliance
