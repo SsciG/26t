@@ -6,14 +6,11 @@
     <title>T26 Endless Runner</title>
     <style>
         html, body {
+                margin: 0;
                 width: 100%;
                 height: 100%;
-                margin: 0;
                 overflow: hidden;
                 overscroll-behavior: none;
-                overflow-x: hidden;
-                 position: fixed;
-                inset: 0;
                 }
 
        #gameFrame,
@@ -59,18 +56,7 @@
 
         }
 
-        /* Vignette around canvas (now on gameFrame, not gameContainer) */
-        #gameFrame::after {
-            content: "";
-            position: absolute;
-            inset: 0;
-            pointer-events: none;
-            box-shadow:
-                0 0 0 1px rgba(80, 250, 240, 0.08),
-                0 0 140px 80px rgba(0, 0, 0, 0.95) inset;
-            border-radius: 18px;
-        }
-
+       
         #gameCanvas {
             display: block;
             background: radial-gradient(circle at 50% 15%, #28354e 0%, #060813 55%, #020308 100%);
@@ -79,8 +65,6 @@
                 0 26px 80px rgba(0,0,0,.85),
                 0 0 0 1px rgba(120, 220, 210, 0.24);
             touch-action: none;
-            max-width: 100%;
-             max-height: 100%;
         }
 
         /* ================= HUD ================= */
@@ -663,9 +647,13 @@
             }
 
             // Update canvas dimensions
-            canvas.width = CANVAS_WIDTH;
+            CANVAS_WIDTH  = Math.floor(CANVAS_WIDTH);
+            CANVAS_HEIGHT = Math.floor(CANVAS_HEIGHT);
+
+            // Apply to canvas (both logical + CSS size)
+            canvas.width  = CANVAS_WIDTH;
             canvas.height = CANVAS_HEIGHT;
-            canvas.style.width = CANVAS_WIDTH + 'px';
+            canvas.style.width  = CANVAS_WIDTH + 'px';
             canvas.style.height = CANVAS_HEIGHT + 'px';
 
             // Update scaled gameplay values
