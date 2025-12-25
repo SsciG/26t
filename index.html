@@ -2,7 +2,9 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="mobile-web-app-capable" content="yes">
     <title>T26 Endless Runner</title>
     <style>
         html, body {
@@ -49,11 +51,7 @@
         /* Game Frame - wraps canvas and matches its dimensions exactly */
         #gameFrame {
             position: relative;
-
-            width: 100%;
-            height: 100%;
-
-
+            display: inline-block;
         }
 
        
@@ -487,6 +485,66 @@
                 font-size: 26px;
             }
         }
+
+        /* Touch device optimizations */
+        @media (pointer: coarse) {
+            .primary-btn, .withdraw-btn {
+                padding: 18px 44px;
+                min-height: 52px;
+                font-size: 16px;
+            }
+
+            #audioToggle, #fullscreenToggle {
+                min-width: 90px;
+                min-height: 44px;
+                padding: 8px 12px;
+            }
+
+            #systemControls {
+                gap: 10px;
+            }
+
+            /* Larger hit area for name input */
+            #playerNameInput {
+                padding: 14px 16px;
+                font-size: 16px;
+            }
+        }
+
+        /* Mobile: hide fullscreen, move sound to left */
+        @media (max-width: 768px) and (pointer: coarse) {
+            #fullscreenToggle {
+                display: none !important;
+            }
+
+            #systemControls {
+                right: auto;
+                left: 20px;
+                bottom: 34px;
+            }
+        }
+
+        /* Landscape mobile optimization */
+        @media (max-height: 500px) and (orientation: landscape) {
+            .overlay-card {
+                padding: 16px 20px;
+                max-height: 90vh;
+                overflow-y: auto;
+            }
+
+            #startScreen h1 {
+                font-size: 20px;
+                margin-bottom: 8px;
+            }
+
+            .primary-btn {
+                padding: 12px 32px;
+            }
+
+            #gameOver h2 {
+                font-size: 18px;
+            }
+        }
     </style>
 </head>
 <body>
@@ -537,11 +595,14 @@
                 Navigate through hostile market debris. Speed ramps up the longer you last.
                 One impact ends the run. How far can you push before you lose control?
             </p>
-            <div class="controls">
+            <div class="controls" id="desktopControls">
                 <p><span class="key">A</span> <span class="key">D</span> or
                    <span class="key">←</span> <span class="key">→</span> — Horizontal thrust</p>
                 <p><span class="key">W</span> <span class="key">S</span> or
                    <span class="key">↑</span> <span class="key">↓</span> — Vertical control</p>
+            </div>
+            <div class="controls" id="mobileControls" style="display: none;">
+                <p>👆 Touch and drag to move your rocket</p>
             </div>
             <button id="startBtn" class="primary-btn">Start Run</button>
         </div>
@@ -593,7 +654,9 @@
         const INITIAL_OBSTACLE_SPAWN_RATE = 120;
         const MAX_OBSTACLE_DENSITY = 40;
         const PARTICLE_LIFETIME = 30;
-        const MAX_PARTICLES = 200; // Limit particle count for performance
+        const MAX_PARTICLES_DESKTOP = 200;
+        const MAX_PARTICLES_MOBILE = 80;
+        let MAX_PARTICLES = MAX_PARTICLES_DESKTOP; // Will be set based on device
 
         // Base player physics constants
         const BASE_PLAYER_WIDTH = 180; // Increased from 140 to make rocket wider
@@ -616,6 +679,50 @@
         let HORIZONTAL_SPEED = BASE_HORIZONTAL_SPEED;
         let canvasScale = 1;
 
+        // Mobile detection (only true user agent, not touchscreen laptops)
+        const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent);
+        let isTouchDevice = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+
+        // Mobile performance optimizations
+        const mobileObstacleScale = isMobile ? 2.0 : 1.0; // Bigger obstacles on mobile
+        const mobileStartSpeed = isMobile ? 1.5 : 1.0; // Faster start on mobile
+        const mobileSpeedMultiplier = isMobile ? 1.2 : 1.0; // Faster speed increase on mobile
+
+        if (isMobile) {
+            MAX_PARTICLES = MAX_PARTICLES_MOBILE;
+        }
+
+        // Touch control variables
+        let touchStartX = 0;
+        let touchStartY = 0;
+        let touchCurrentX = 0;
+        let touchCurrentY = 0;
+        let isTouching = false;
+        let touchTargetX = null;
+        let touchTargetY = null;
+
+        // Virtual joystick for mobile
+        const joystick = {
+            baseX: 0,  // Will be set after canvas resize
+            baseY: 0,
+            baseRadius: 60,
+            stickX: 0,
+            stickY: 0,
+            stickRadius: 30,
+            active: false,
+            longPressTimer: null,
+            isRepositioning: false,
+            inputY: 0  // -1 to 1 for vertical control
+        };
+
+        function initJoystickPosition() {
+            // Bottom right corner with padding
+            joystick.baseX = CANVAS_WIDTH - 100 * canvasScale;
+            joystick.baseY = CANVAS_HEIGHT - 120 * canvasScale;
+            joystick.stickX = joystick.baseX;
+            joystick.stickY = joystick.baseY;
+        }
+
         // Fullscreen-aware canvas resize
         function resizeCanvas() {
             const isFullscreen = !!(document.fullscreenElement ||
@@ -623,24 +730,28 @@
                                   document.mozFullScreenElement ||
                                   document.msFullscreenElement);
 
-            if (isFullscreen) {
-                // Fill entire screen while maintaining aspect ratio
+            if (isMobile) {
+                // Mobile: fill entire screen with high DPI support
+                const dpr = window.devicePixelRatio || 1;
+                CANVAS_WIDTH = window.innerWidth * dpr;
+                CANVAS_HEIGHT = window.innerHeight * dpr;
+                canvasScale = CANVAS_WIDTH / BASE_CANVAS_WIDTH;
+            } else if (isFullscreen) {
+                // Desktop fullscreen: fill entire screen while maintaining aspect ratio
                 const windowAspect = window.innerWidth / window.innerHeight;
                 const gameAspect = BASE_CANVAS_WIDTH / BASE_CANVAS_HEIGHT;
 
                 if (windowAspect > gameAspect) {
-                    // Window is wider - fit to height
                     CANVAS_HEIGHT = window.innerHeight;
                     CANVAS_WIDTH = Math.floor(CANVAS_HEIGHT * gameAspect);
                 } else {
-                    // Window is taller - fit to width
                     CANVAS_WIDTH = window.innerWidth;
                     CANVAS_HEIGHT = Math.floor(CANVAS_WIDTH / gameAspect);
                 }
 
                 canvasScale = CANVAS_WIDTH / BASE_CANVAS_WIDTH;
             } else {
-                // Normal windowed mode - use base size
+                // Desktop windowed mode - use base size
                 CANVAS_WIDTH = BASE_CANVAS_WIDTH;
                 CANVAS_HEIGHT = BASE_CANVAS_HEIGHT;
                 canvasScale = 1;
@@ -650,15 +761,22 @@
             CANVAS_WIDTH  = Math.floor(CANVAS_WIDTH);
             CANVAS_HEIGHT = Math.floor(CANVAS_HEIGHT);
 
-            // Apply to canvas (both logical + CSS size)
+            // Apply to canvas
             canvas.width  = CANVAS_WIDTH;
             canvas.height = CANVAS_HEIGHT;
-            canvas.style.width  = CANVAS_WIDTH + 'px';
-            canvas.style.height = CANVAS_HEIGHT + 'px';
+
+            // CSS size - use screen size on mobile (not DPR multiplied)
+            if (isMobile) {
+                canvas.style.width  = window.innerWidth + 'px';
+                canvas.style.height = window.innerHeight + 'px';
+            } else {
+                canvas.style.width  = CANVAS_WIDTH + 'px';
+                canvas.style.height = CANVAS_HEIGHT + 'px';
+            }
 
             // Update scaled gameplay values
-            PLAYER_WIDTH = BASE_PLAYER_WIDTH * canvasScale;
-            PLAYER_HEIGHT = BASE_PLAYER_HEIGHT * canvasScale;
+            PLAYER_WIDTH = BASE_PLAYER_WIDTH * canvasScale * mobileObstacleScale;
+            PLAYER_HEIGHT = BASE_PLAYER_HEIGHT * canvasScale * mobileObstacleScale;
             VERTICAL_SPEED = BASE_VERTICAL_SPEED * canvasScale;
             HORIZONTAL_SPEED = BASE_HORIZONTAL_SPEED * canvasScale;
 
@@ -796,6 +914,9 @@
             ui: 1.0
         };
 
+        // Mobile performance - reduce effects intensity
+        const mobilePerformanceMultiplier = isMobile ? 0.6 : 1.0;
+
 
         const images = {
             logo: new Image(),
@@ -859,6 +980,17 @@
         // Initialize canvas sizing after all objects are defined
         resizeCanvas();
         window.addEventListener('resize', resizeCanvas);
+
+        // Initialize joystick position for mobile
+        if (isMobile) {
+            initJoystickPosition();
+        }
+
+        // Show appropriate controls based on device
+        if (isMobile || isTouchDevice) {
+            document.getElementById('desktopControls').style.display = 'none';
+            document.getElementById('mobileControls').style.display = 'block';
+        }
 
 
         function initializeStars() {
@@ -1119,6 +1251,118 @@
             keys[e.code] = false;
         }, { passive: false });
 
+        // Touch controls for mobile
+        function getCanvasCoords(touchX, touchY) {
+            const rect = canvas.getBoundingClientRect();
+            return {
+                x: (touchX - rect.left) * (canvas.width / rect.width),
+                y: (touchY - rect.top) * (canvas.height / rect.height)
+            };
+        }
+
+        function isInsideJoystick(x, y) {
+            const dx = x - joystick.baseX;
+            const dy = y - joystick.baseY;
+            return Math.sqrt(dx * dx + dy * dy) <= joystick.baseRadius * 1.5;
+        }
+
+        canvas.addEventListener('touchstart', (e) => {
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const coords = getCanvasCoords(touch.clientX, touch.clientY);
+
+            if (isMobile && isInsideJoystick(coords.x, coords.y)) {
+                // Start joystick control
+                joystick.active = true;
+                joystick.stickX = coords.x;
+                joystick.stickY = coords.y;
+
+                // Start long press timer for repositioning
+                joystick.longPressTimer = setTimeout(() => {
+                    joystick.isRepositioning = true;
+                }, 500);
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchmove', (e) => {
+            e.preventDefault();
+
+            const touch = e.touches[0];
+            const coords = getCanvasCoords(touch.clientX, touch.clientY);
+
+            if (isMobile && joystick.active) {
+                // Cancel long press if moved
+                if (joystick.longPressTimer) {
+                    clearTimeout(joystick.longPressTimer);
+                    joystick.longPressTimer = null;
+                }
+
+                if (joystick.isRepositioning) {
+                    // Move the entire joystick base
+                    joystick.baseX = coords.x;
+                    joystick.baseY = coords.y;
+                    joystick.stickX = coords.x;
+                    joystick.stickY = coords.y;
+                } else {
+                    // Move stick within base radius
+                    const dx = coords.x - joystick.baseX;
+                    const dy = coords.y - joystick.baseY;
+                    const distance = Math.sqrt(dx * dx + dy * dy);
+
+                    if (distance <= joystick.baseRadius) {
+                        joystick.stickX = coords.x;
+                        joystick.stickY = coords.y;
+                    } else {
+                        // Clamp to edge of base
+                        const angle = Math.atan2(dy, dx);
+                        joystick.stickX = joystick.baseX + Math.cos(angle) * joystick.baseRadius;
+                        joystick.stickY = joystick.baseY + Math.sin(angle) * joystick.baseRadius;
+                    }
+
+                    // Calculate vertical input (-1 to 1)
+                    joystick.inputY = (joystick.stickY - joystick.baseY) / joystick.baseRadius;
+                }
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchend', (e) => {
+            e.preventDefault();
+
+            if (isMobile) {
+                // Clear long press timer
+                if (joystick.longPressTimer) {
+                    clearTimeout(joystick.longPressTimer);
+                    joystick.longPressTimer = null;
+                }
+
+                joystick.active = false;
+                joystick.isRepositioning = false;
+                joystick.stickX = joystick.baseX;
+                joystick.stickY = joystick.baseY;
+                joystick.inputY = 0;
+            }
+        }, { passive: false });
+
+        canvas.addEventListener('touchcancel', (e) => {
+            if (isMobile) {
+                if (joystick.longPressTimer) {
+                    clearTimeout(joystick.longPressTimer);
+                    joystick.longPressTimer = null;
+                }
+                joystick.active = false;
+                joystick.isRepositioning = false;
+                joystick.stickX = joystick.baseX;
+                joystick.stickY = joystick.baseY;
+                joystick.inputY = 0;
+            }
+        }, { passive: false });
+
+        // Prevent default touch behaviors on the game container
+        document.getElementById('gameContainer').addEventListener('touchmove', (e) => {
+            if (gameRunning) e.preventDefault();
+        }, { passive: false });
+
         document.getElementById('startBtn').addEventListener('click', () => {
             unlockAudio(); // Browser autoplay compliance
             startGame();
@@ -1319,7 +1563,8 @@
             const elapsedMinutes = gameTime / 60;
 
             // Smooth speed scaling using logarithmic curve (no sudden jumps)
-            gameSpeed = 1 + Math.log1p(elapsedMinutes) * 0.8;
+            // Mobile: starts faster and increases faster
+            gameSpeed = mobileStartSpeed + Math.log1p(elapsedMinutes) * 0.8 * mobileSpeedMultiplier;
             maxSpeedReached = Math.max(maxSpeedReached, gameSpeed);
 
             // Update distance
@@ -1386,6 +1631,11 @@
             }
             if (keys['ArrowRight'] || keys['KeyD']) {
                 player.targetX += HORIZONTAL_SPEED * slowMotionFactor;
+            }
+
+            // Joystick controls for mobile - only vertical movement
+            if (isMobile && joystick.active && Math.abs(joystick.inputY) > 0.1) {
+                player.targetY += joystick.inputY * VERTICAL_SPEED * slowMotionFactor * 1.5;
             }
 
             // Clamp horizontal position to screen bounds (scaled)
@@ -2209,6 +2459,48 @@
 
                 ctx.restore();
             }
+
+            // Draw joystick on mobile
+            if (isMobile && gameRunning) {
+                drawJoystick();
+            }
+        }
+
+        function drawJoystick() {
+            ctx.save();
+
+            // Draw base circle (outer ring)
+            ctx.beginPath();
+            ctx.arc(joystick.baseX, joystick.baseY, joystick.baseRadius, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.15)';
+            ctx.fill();
+            ctx.strokeStyle = 'rgba(255, 255, 255, 0.4)';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw stick (inner circle)
+            ctx.beginPath();
+            ctx.arc(joystick.stickX, joystick.stickY, joystick.stickRadius, 0, Math.PI * 2);
+
+            if (joystick.active) {
+                ctx.fillStyle = 'rgba(255, 149, 0, 0.7)';
+                ctx.strokeStyle = 'rgba(255, 200, 100, 0.9)';
+            } else {
+                ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+                ctx.strokeStyle = 'rgba(255, 255, 255, 0.6)';
+            }
+            ctx.fill();
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            // Draw up/down arrows hint
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.5)';
+            ctx.font = `${16 * canvasScale}px Arial`;
+            ctx.textAlign = 'center';
+            ctx.fillText('▲', joystick.baseX, joystick.baseY - joystick.baseRadius - 10);
+            ctx.fillText('▼', joystick.baseX, joystick.baseY + joystick.baseRadius + 20);
+
+            ctx.restore();
         }
 
         function drawRocketLight() {
@@ -2743,37 +3035,37 @@
 
                 switch(type) {
                     case 'candlestick':
-                        obstacle.width = 70 * canvasScale;
-                        obstacle.height = (70 + Math.random() * 60) * canvasScale; // Random height 70-130px
+                        obstacle.width = 70 * canvasScale * mobileObstacleScale;
+                        obstacle.height = (70 + Math.random() * 60) * canvasScale * mobileObstacleScale;
                         break;
                     case 'bitcoin':
-                        obstacle.width = 65 * canvasScale;
-                        obstacle.height = 65 * canvasScale;
+                        obstacle.width = 65 * canvasScale * mobileObstacleScale;
+                        obstacle.height = 65 * canvasScale * mobileObstacleScale;
                         obstacle.rotation = Math.random() * Math.PI * 2;
-                        obstacle.rotationSpeed = 0.03 + Math.random() * 0.04; // Slower, smoother rotation
+                        obstacle.rotationSpeed = 0.03 + Math.random() * 0.04;
                         break;
                     case 'ethereum':
-                        obstacle.width = 70 * canvasScale;
-                        obstacle.height = 70 * canvasScale;
-                        obstacle.originalY = randomY; // Store original Y position
+                        obstacle.width = 70 * canvasScale * mobileObstacleScale;
+                        obstacle.height = 70 * canvasScale * mobileObstacleScale;
+                        obstacle.originalY = randomY;
                         obstacle.driftOffset = 0;
-                        obstacle.driftSpeed = 0.025 + Math.random() * 0.025; // Floating effect
+                        obstacle.driftSpeed = 0.025 + Math.random() * 0.025;
                         break;
                     case 'solana':
-                        obstacle.width = 65 * canvasScale;
-                        obstacle.height = 65 * canvasScale;
+                        obstacle.width = 65 * canvasScale * mobileObstacleScale;
+                        obstacle.height = 65 * canvasScale * mobileObstacleScale;
                         obstacle.rotation = Math.random() * Math.PI * 2;
                         obstacle.rotationSpeed = 0.02 + Math.random() * 0.03;
                         break;
                     case 'shib':
-                        obstacle.width = 65 * canvasScale;
-                        obstacle.height = 65 * canvasScale;
+                        obstacle.width = 65 * canvasScale * mobileObstacleScale;
+                        obstacle.height = 65 * canvasScale * mobileObstacleScale;
                         obstacle.pulse = 0;
                         obstacle.pulseSpeed = 0.04 + Math.random() * 0.03;
                         break;
                     case 'bnb':
-                        obstacle.width = 65 * canvasScale;
-                        obstacle.height = 65 * canvasScale;
+                        obstacle.width = 65 * canvasScale * mobileObstacleScale;
+                        obstacle.height = 65 * canvasScale * mobileObstacleScale;
                         obstacle.rotation = Math.random() * Math.PI * 2;
                         obstacle.rotationSpeed = 0.015 + Math.random() * 0.025;
                         break;
@@ -2794,7 +3086,7 @@
 
  
         function spawnBonus() {
-            const bonusSize = 50 * canvasScale;
+            const bonusSize = 50 * canvasScale * mobileObstacleScale;
             const minY = 100 * canvasScale;
             const maxY = CANVAS_HEIGHT - 150 * canvasScale;
             const randomY = minY + Math.random() * (maxY - minY);
