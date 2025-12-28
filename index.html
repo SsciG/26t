@@ -170,6 +170,10 @@
                 0 0 18px rgba(0, 255, 224, 0.45);
         }
 
+        #startBtn {
+            margin-top: 1em;
+        }
+
         .primary-btn {
             padding: 16px 40px;
             border-radius: 50px;
@@ -522,6 +526,10 @@
                 left: 20px;
                 bottom: 34px;
             }
+
+            #startBtn {
+                margin-top: 15px;
+            }
         }
 
         /* Landscape mobile optimization */
@@ -602,7 +610,19 @@
                    <span class="key">↑</span> <span class="key">↓</span> — Vertical control</p>
             </div>
             <div class="controls" id="mobileControls" style="display: none;">
-                <p>👆 Touch and drag to move your rocket</p>
+                <p>Use the joystick to move your rocket</p>
+                <div style="display: flex; justify-content: center; margin-top: 10px;">
+                    <svg width="70" height="90" viewBox="0 0 70 90">
+                        <!-- Up arrow -->
+                        <text x="35" y="14" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="14">▲</text>
+                        <!-- Base circle -->
+                        <circle cx="35" cy="45" r="25" fill="rgba(255,255,255,0.15)" stroke="rgba(255,255,255,0.4)" stroke-width="2"/>
+                        <!-- Stick (centered) -->
+                        <circle cx="35" cy="45" r="12" fill="rgba(255,149,0,0.7)" stroke="rgba(255,200,100,0.9)" stroke-width="2"/>
+                        <!-- Down arrow -->
+                        <text x="35" y="86" text-anchor="middle" fill="rgba(255,255,255,0.6)" font-size="14">▼</text>
+                    </svg>
+                </div>
             </div>
             <button id="startBtn" class="primary-btn">Start Run</button>
         </div>
@@ -664,6 +684,7 @@
         const BASE_VERTICAL_SPEED = 10;
         const BASE_HORIZONTAL_SPEED = 10;
         const HOVER_DAMPENING = 0.25;
+        const MOBILE_HOVER_DAMPENING = 0.4; // Faster response on mobile
         const LANE_TRANSITION_SPEED = 0.2;
 
 
@@ -685,8 +706,8 @@
 
         // Mobile performance optimizations
         const mobileObstacleScale = isMobile ? 2.0 : 1.0; // Bigger obstacles on mobile
-        const mobileStartSpeed = isMobile ? 1.5 : 1.0; // Faster start on mobile
-        const mobileSpeedMultiplier = isMobile ? 1.2 : 1.0; // Faster speed increase on mobile
+        const mobileStartSpeed = isMobile ? 2.5 : 1.0; // Faster start on mobile
+        const mobileSpeedMultiplier = isMobile ? 1.8 : 1.0; // Faster speed increase on mobile
 
         if (isMobile) {
             MAX_PARTICLES = MAX_PARTICLES_MOBILE;
@@ -705,10 +726,10 @@
         const joystick = {
             baseX: 0,  // Will be set after canvas resize
             baseY: 0,
-            baseRadius: 60,
+            baseRadius: 90,
             stickX: 0,
             stickY: 0,
-            stickRadius: 30,
+            stickRadius: 45,
             active: false,
             longPressTimer: null,
             isRepositioning: false,
@@ -716,9 +737,9 @@
         };
 
         function initJoystickPosition() {
-            // Bottom right corner with padding
-            joystick.baseX = CANVAS_WIDTH - 100 * canvasScale;
-            joystick.baseY = CANVAS_HEIGHT - 120 * canvasScale;
+            // Bottom right corner with more padding (moved up and left)
+            joystick.baseX = CANVAS_WIDTH - 160 * canvasScale;
+            joystick.baseY = CANVAS_HEIGHT - 180 * canvasScale;
             joystick.stickX = joystick.baseX;
             joystick.stickY = joystick.baseY;
         }
@@ -1010,7 +1031,7 @@
 
         function updateStars() {
             for (let star of backgroundStars) {
-                star.x -= star.speed * gameSpeed * canvasScale;
+                star.x -= star.speed * gameSpeed * canvasScale * deltaTime;
 
                 // Wrap around when star goes off screen
                 if (star.x < 0) {
@@ -1465,6 +1486,8 @@
             stopGameLoop(); // Prevent multiple RAF loops
             gameRunning = true;
             startTime = performance.now();
+            lastFrameTime = 0; // Reset for smooth deltaTime
+            deltaTime = 1;
             resetGame();
 
             // Start jet engine sound
@@ -1548,8 +1571,17 @@
             initializeStars(); // Reinitialize stars for new game
         }
 
-        function gameLoop() {
+        let lastFrameTime = 0;
+        let deltaTime = 1;
+
+        function gameLoop(currentTime) {
             if (!gameRunning) return;
+
+            // Calculate delta time for smooth animation
+            if (lastFrameTime > 0) {
+                deltaTime = Math.min((currentTime - lastFrameTime) / 16.67, 3); // Normalize to 60fps, cap at 3x
+            }
+            lastFrameTime = currentTime;
 
             update();
             draw();
@@ -1634,8 +1666,8 @@
             }
 
             // Joystick controls for mobile - only vertical movement
-            if (isMobile && joystick.active && Math.abs(joystick.inputY) > 0.1) {
-                player.targetY += joystick.inputY * VERTICAL_SPEED * slowMotionFactor * 1.5;
+            if (isMobile && joystick.active && Math.abs(joystick.inputY) > 0.05) {
+                player.targetY += joystick.inputY * VERTICAL_SPEED * slowMotionFactor * 4.0;
             }
 
             // Clamp horizontal position to screen bounds (scaled)
@@ -1660,7 +1692,8 @@
             player.targetY = Math.max(minY, Math.min(maxY, player.targetY));
 
             // Smooth movement to target position (hovering effect)
-            player.y += (player.targetY - player.y) * HOVER_DAMPENING;
+            const dampening = isMobile ? MOBILE_HOVER_DAMPENING : HOVER_DAMPENING;
+            player.y += (player.targetY - player.y) * dampening;
 
             // Update velocityY for flame effects
             player.velocityY = (player.targetY - player.y) * 0.5;
@@ -1714,7 +1747,7 @@
             const currentBoostSpeed = boostActive ? gameSpeed * BOOST_SPEED_MULTIPLIER : gameSpeed;
             for (let i = bonuses.length - 1; i >= 0; i--) {
                 const bonus = bonuses[i];
-                bonus.x -= gameSpeed * BASE_SCROLL_SPEED * canvasScale;
+                bonus.x -= gameSpeed * BASE_SCROLL_SPEED * canvasScale * deltaTime;
                 bonus.rotation += 0.05;
 
                 // Remove off-screen bonuses
@@ -1750,7 +1783,7 @@
             // Update obstacles
             for (let i = obstacles.length - 1; i >= 0; i--) {
                 const obs = obstacles[i];
-                obs.x -= currentBoostSpeed * BASE_SCROLL_SPEED * canvasScale;
+                obs.x -= currentBoostSpeed * BASE_SCROLL_SPEED * canvasScale * deltaTime;
 
                 // Update age for spawn animation
                 if (!obs.age) obs.age = 0;
